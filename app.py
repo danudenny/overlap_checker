@@ -10,6 +10,7 @@ from shapely.geometry import mapping
 import folium
 from streamlit_folium import folium_static
 import plotly.express as px
+from loguru import logger
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Topology Overlap Checker", layout="wide")
