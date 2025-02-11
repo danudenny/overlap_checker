@@ -91,7 +91,7 @@ def create_overlap_map(gdf, errors_df):
 
     # Add overlapping features
     for _, row in errors_df.iterrows():
-        if row['error_type'] == 'major_overlap':
+        if row['major_overlap'] == 'major_overlap':
             color = 'red'
             feature_group = major_group
         else:
@@ -124,39 +124,6 @@ def create_overlap_map(gdf, errors_df):
         st.warning(f"Could not fit map bounds: {str(e)}")
 
     return m
-
-
-def create_statistics_plots(errors_df):
-    """Create statistical visualizations using plotly"""
-    # Overlap type distribution
-    fig_types = px.pie(
-        errors_df,
-        names='error_type',
-        title='Distribution of Overlap Types',
-        color='error_type',
-        color_discrete_map={'major_overlap': 'red', 'minor_overlap': 'yellow'}
-    )
-
-    # Overlap percentage distribution
-    fig_dist = px.histogram(
-        errors_df,
-        x='overlap_percentage',
-        title='Distribution of Overlap Percentages',
-        nbins=20,
-        color='error_type'
-    )
-
-    # Top 10 largest overlaps
-    top_overlaps = errors_df.nlargest(10, 'overlap_percentage')
-    fig_top = px.bar(
-        top_overlaps,
-        x='feature_id',
-        y='overlap_percentage',
-        title='Top 10 Largest Overlaps',
-        color='error_type'
-    )
-
-    return fig_types, fig_dist, fig_top
 
 
 def main():
@@ -192,12 +159,12 @@ def main():
                     st.success(f"Found {len(overlap_errors)} overlapping features")
 
                     # Display results in tabs
-                    tab1, tab2, tab3, tab4 = st.tabs(["Summary", "Map", "Statistics", "Download"])
+                    tab1, tab2, tab3 = st.tabs(["Summary", "Map", "Download"])
 
                     with tab1:
                         # Summary statistics
-                        major_overlaps = len([e for e in overlap_errors if e['error_type'] == 'major_overlap'])
-                        minor_overlaps = len([e for e in overlap_errors if e['error_type'] == 'minor_overlap'])
+                        major_overlaps = len([e for e in overlap_errors if e['major_overlap'] == 'major_overlap'])
+                        minor_overlaps = len([e for e in overlap_errors if e['minor_overlap'] == 'minor_overlap'])
 
                         # Create 3 columns for metrics
                         col1, col2, col3 = st.columns(3)
@@ -212,7 +179,7 @@ def main():
                         st.subheader("Detailed Results")
                         if not errors_df.empty:
                             display_cols = [
-                                'error_type', 'feature_id', 'overlap_percentage',
+                                'major_overlap', 'minor_overlap', 'feature_id', 'overlap_percentage',
                                 'total_overlap_area_m2', 'original_area_m2',
                                 'overlapping_with', 'remarks'
                             ]
@@ -232,42 +199,6 @@ def main():
                         folium_static(overlap_map)
 
                     with tab3:
-                        # Statistical visualizations
-                        st.subheader("Statistical Analysis")
-
-                        fig_types, fig_dist, fig_top = create_statistics_plots(errors_df)
-
-                        # Display plots in columns
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.plotly_chart(fig_types, use_container_width=True)
-                        with col2:
-                            st.plotly_chart(fig_dist, use_container_width=True)
-
-                        # Display top overlaps chart full width
-                        st.plotly_chart(fig_top, use_container_width=True)
-
-                        # Additional statistics
-                        st.subheader("Summary Statistics")
-                        stats_df = pd.DataFrame({
-                            'Metric': [
-                                'Average Overlap Percentage',
-                                'Maximum Overlap Percentage',
-                                'Minimum Overlap Percentage',
-                                'Total Overlap Area (m²)',
-                                'Average Overlap Area (m²)'
-                            ],
-                            'Value': [
-                                f"{errors_df['overlap_percentage'].mean():.2f}%",
-                                f"{errors_df['overlap_percentage'].max():.2f}%",
-                                f"{errors_df['overlap_percentage'].min():.2f}%",
-                                f"{errors_df['total_overlap_area_m2'].sum():,.2f}",
-                                f"{errors_df['total_overlap_area_m2'].mean():,.2f}"
-                            ]
-                        })
-                        st.table(stats_df)
-
-                    with tab4:
                         # Download options
                         st.subheader("Download Results")
                         col1, col2 = st.columns(2)
