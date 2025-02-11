@@ -185,9 +185,7 @@ def main():
                     gdf.set_crs("EPSG:4326")
                     overlap_errors = checker.check_overlaps(gdf)
                     errors_df = gpd.GeoDataFrame(
-                        overlap_errors,
-                        geometry='geometry',
-                        crs='EPSG:4326'
+                        overlap_errors
                     )
 
                     # Display summary
