@@ -9,9 +9,7 @@ import numpy as np
 from shapely.geometry import mapping
 import folium
 from streamlit_folium import folium_static
-import plotly.express as px
 from loguru import logger
-import plotly.graph_objects as go
 
 st.set_page_config(page_title="Topology Overlap Checker", layout="wide")
 
@@ -91,7 +89,7 @@ def create_overlap_map(gdf, errors_df):
 
     # Add overlapping features
     for _, row in errors_df.iterrows():
-        if row['major_overlap'] == 'major_overlap':
+        if row['major_overlap']:
             color = 'red'
             feature_group = major_group
         else:
@@ -150,9 +148,13 @@ def main():
                     gdf.set_geometry("geometry")
                     gdf.set_crs("EPSG:4326")
                     overlap_errors = checker.check_overlaps(gdf)
+
+                    # Convert results to GeoDataFrame
                     errors_df = gpd.GeoDataFrame(
-                        overlap_errors
+                        overlap_errors,
+                        geometry="polygon"  # Use the "polygon" key for geometry
                     )
+                    errors_df.rename(columns={"polygon": "geometry"}, inplace=True)  # Rename to "geometry"
 
                     # Display summary
                     st.success(f"Found {len(overlap_errors)} overlapping features")
@@ -162,8 +164,8 @@ def main():
 
                     with tab1:
                         # Summary statistics
-                        major_overlaps = len([e for e in overlap_errors if e['major_overlap'] == 'major_overlap'])
-                        minor_overlaps = len([e for e in overlap_errors if e['minor_overlap'] == 'minor_overlap'])
+                        major_overlaps = len([e for e in overlap_errors if e['major_overlap']])
+                        minor_overlaps = len([e for e in overlap_errors if not e['major_overlap']])
 
                         # Create 3 columns for metrics
                         col1, col2, col3 = st.columns(3)
