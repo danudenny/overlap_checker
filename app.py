@@ -180,7 +180,7 @@ def main():
             # Process button
             if st.button("Check Overlaps"):
                 with st.spinner('Processing overlaps...'):
-                    logger.info(gdf.head())
+                    logger.info(gdf.columns)
                     overlap_errors = checker.check_overlaps(gdf)
                     errors_df = gpd.GeoDataFrame(
                         overlap_errors,
