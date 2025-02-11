@@ -158,7 +158,11 @@ def main():
                     
                     # Set the CRS (assuming EPSG:4326 for latitude/longitude)
                     errors_df.set_crs("EPSG:4326", inplace=True)
-                    errors_df.rename(columns={"polygon": "geometry"}, inplace=True)  # Rename to "geometry"
+                    if 'polygon' in errors_df.columns:
+                        errors_df.rename(columns={"polygon": "geometry"}, inplace=True)
+                    
+                    if 'geometry' in errors_df.columns:
+                        errors_df.set_geometry("geometry", inplace=True)
 
                     # Display summary
                     st.success(f"Found {len(overlap_errors)} overlapping features")
