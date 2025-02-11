@@ -151,7 +151,6 @@ def main():
 
                     errors_df = gpd.GeoDataFrame(
                         overlap_errors,
-                        geometry="polygon"  # Use the "polygon" key for geometry
                     )
                     
                     # Explicitly set the geometry column
