@@ -181,6 +181,8 @@ def main():
             if st.button("Check Overlaps"):
                 with st.spinner('Processing overlaps...'):
                     logger.info(gdf.columns)
+                    gdf.set_geometry("geometry")
+                    gdf.set_crs("EPSG:4326")
                     overlap_errors = checker.check_overlaps(gdf)
                     errors_df = gpd.GeoDataFrame(
                         overlap_errors,
