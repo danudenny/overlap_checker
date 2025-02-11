@@ -151,8 +151,7 @@ def main():
 
                     # Convert results to GeoDataFrame
                     errors_df = gpd.GeoDataFrame(
-                        overlap_errors,
-                        geometry="geometry"  # Use the "polygon" key for geometry
+                        overlap_errors
                     )
                     errors_df.rename(columns={"polygon": "geometry"}, inplace=True)  # Rename to "geometry"
 
