@@ -99,6 +99,12 @@ class TopologyChecker:
         self, gdf1: gpd.GeoDataFrame, gdf2: Optional[gpd.GeoDataFrame] = None
     ) -> List[dict]:
         # Ensure correct CRS
+        if not isinstance(gdf1, gpd.GeoDataFrame):
+            gdf1["geometry"] = gdf1["polygon_original"] or gdf1["geometry"] or gdf1["polygon"]
+            gdf1 = gpd.GeoDataFrame(gdf1)
+            gdf1.set_geometry("geometry", inplace=True)
+            gdf1 = gdf1.set_crs("EPSG:4326")
+
         gdf1 = gdf1 if gdf1.crs == "EPSG:4326" else gdf1.to_crs("EPSG:4326")
         if gdf2 is not None:
             gdf2 = gdf2 if gdf2.crs == "EPSG:4326" else gdf2.to_crs("EPSG:4326")
