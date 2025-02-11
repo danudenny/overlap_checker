@@ -149,10 +149,16 @@ def main():
                     gdf.set_crs("EPSG:4326")
                     overlap_errors = checker.check_overlaps(gdf)
 
-                    # Convert results to GeoDataFrame
                     errors_df = gpd.GeoDataFrame(
-                        overlap_errors
+                        overlap_errors,
+                        geometry="polygon"  # Use the "polygon" key for geometry
                     )
+                    
+                    # Explicitly set the geometry column
+                    errors_df.set_geometry("polygon", inplace=True)
+                    
+                    # Set the CRS (assuming EPSG:4326 for latitude/longitude)
+                    errors_df.set_crs("EPSG:4326", inplace=True)
                     errors_df.rename(columns={"polygon": "geometry"}, inplace=True)  # Rename to "geometry"
 
                     # Display summary
