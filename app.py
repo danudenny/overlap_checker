@@ -105,8 +105,7 @@ def create_overlap_map(gdf, errors_df):
                 'color': c,
                 'weight': 2,
                 'fillOpacity': 0.5
-            },
-            tooltip=f"ID: {<br>Overlap: {row['overlap_percentage']:.2f}%"
+            }
         ).add_to(feature_group)
 
     # Add feature groups to map
