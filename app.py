@@ -106,7 +106,7 @@ def create_overlap_map(gdf, errors_df):
                 'weight': 2,
                 'fillOpacity': 0.5
             },
-            tooltip=f"ID: {row['feature_id']}<br>Overlap: {row['overlap_percentage']:.2f}%"
+            tooltip=f"ID: {<br>Overlap: {row['overlap_percentage']:.2f}%"
         ).add_to(feature_group)
 
     # Add feature groups to map
@@ -179,7 +179,7 @@ def main():
                         st.subheader("Detailed Results")
                         if not errors_df.empty:
                             display_cols = [
-                                'major_overlap', 'minor_overlap', 'feature_id', 'overlap_percentage',
+                                'major_overlap', 'minor_overlap', 'overlap_percentage',
                                 'total_overlap_area_m2', 'original_area_m2',
                                 'overlapping_with', 'remarks'
                             ]
