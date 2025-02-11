@@ -179,6 +179,7 @@ def main():
             # Process button
             if st.button("Check Overlaps"):
                 with st.spinner('Processing overlaps...'):
+                    print(gdf.head())
                     overlap_errors = checker.check_overlaps(gdf)
                     errors_df = gpd.GeoDataFrame(
                         overlap_errors,
