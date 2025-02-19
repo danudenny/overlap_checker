@@ -188,7 +188,7 @@ def main():
                         st.subheader("Detailed Results")
                         if not errors_df.empty:
                             display_cols = [
-                                'major_overlap', 'minor_overlap', 'overlap_percentage',
+                                'major_overlap', 'minor_overlap', 'uid', 'overlap_percentage',
                                 'total_overlap_area_m2', 'original_area_m2',
                                 'overlapping_with', 'remarks'
                             ]
