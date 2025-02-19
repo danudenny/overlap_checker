@@ -59,39 +59,39 @@ class TopologyChecker:
             overlap_area=overlap_utm.area,
         )
 
-    def _determine_overlap_type(self, polygon_overlaps: Dict[int, Dict]) -> Dict[int, bool]:
+    def _determine_overlap_type(self, polygon_overlaps: Dict[str, Dict]) -> Dict[str, bool]:
         """
         Determine final overlap types considering connected polygons.
-        Returns a dictionary mapping polygon index to whether it has a major overlap (True) or not (False).
+        Returns a dictionary mapping polygon ProductionPlace to whether it has a major overlap (True) or not (False).
         """
-        major_overlaps: Set[int] = set()
-        overlap_types: Dict[int, bool] = {}
+        major_overlaps: Set[str] = set()
+        overlap_types: Dict[str, bool] = {}
         
         # First pass: identify initial major overlaps
-        for idx, data in polygon_overlaps.items():
+        for prod_place, data in polygon_overlaps.items():
             overlap_percentage = (data["total_overlap_area"] / data["original_area"]) * 100
             if overlap_percentage > 20:
-                major_overlaps.add(idx)
+                major_overlaps.add(prod_place)
         
         # Second pass: propagate major overlap status to connected minor overlaps
         changed = True
         while changed:
             changed = False
-            for idx, data in polygon_overlaps.items():
+            for prod_place, data in polygon_overlaps.items():
                 # Skip if already marked as major
-                if idx in major_overlaps:
+                if prod_place in major_overlaps:
                     continue
                 
                 # Check if any connected polygon has a major overlap
-                for connected_idx in data["overlapping_with"]:
-                    if connected_idx in major_overlaps:
-                        major_overlaps.add(idx)
+                for connected_place in data["overlapping_with"]:
+                    if connected_place in major_overlaps:
+                        major_overlaps.add(prod_place)
                         changed = True
                         break
         
         # Create final mapping
-        for idx in polygon_overlaps:
-            overlap_types[idx] = idx in major_overlaps
+        for prod_place in polygon_overlaps:
+            overlap_types[prod_place] = prod_place in major_overlaps
             
         return overlap_types
 
@@ -105,14 +105,21 @@ class TopologyChecker:
             gdf1.set_geometry("geometry", inplace=True)
             gdf1 = gdf1.set_crs("EPSG:4326")
 
+        # Ensure ProductionPlace column exists
+        if "ProductionPlace" not in gdf1.columns:
+            raise ValueError("GeoDataFrame must contain a 'ProductionPlace' column")
+
         gdf1 = gdf1 if gdf1.crs == "EPSG:4326" else gdf1.to_crs("EPSG:4326")
         if gdf2 is not None:
+            if "ProductionPlace" not in gdf2.columns:
+                raise ValueError("Second GeoDataFrame must contain a 'ProductionPlace' column")
             gdf2 = gdf2 if gdf2.crs == "EPSG:4326" else gdf2.to_crs("EPSG:4326")
         else:
             gdf2, self_check = gdf1, True
 
         geometries = np.array(gdf2.geometry.values)
-        polygon_overlaps: Dict[int, Dict] = {}
+        production_places = gdf2["ProductionPlace"].values
+        polygon_overlaps: Dict[str, Dict] = {}
         invalid_count = 0
 
         logger.info("Building STRtree spatial index...")
@@ -126,8 +133,9 @@ class TopologyChecker:
         for start_idx in range(0, len(gdf1), batch_size):
             end_idx = min(start_idx + batch_size, len(gdf1))
             batch_geoms = gdf1.geometry.values[start_idx:end_idx]
+            batch_places = gdf1["ProductionPlace"].values[start_idx:end_idx]
 
-            for idx1, geom1 in enumerate(batch_geoms, start=start_idx):
+            for idx1, (geom1, place1) in enumerate(zip(batch_geoms, batch_places), start=start_idx):
                 if not valid_geoms1[idx1]:
                     invalid_count += 1
                     continue
@@ -143,6 +151,7 @@ class TopologyChecker:
                             continue
 
                         geom2 = geometries[idx2]
+                        place2 = production_places[idx2]
 
                         if geom1.intersects(geom2) and not geom1.touches(geom2):
                             try:
@@ -154,35 +163,35 @@ class TopologyChecker:
                                     geom1, geom2, overlap_geom
                                 )
 
-                                if idx1 not in polygon_overlaps:
-                                    polygon_overlaps[idx1] = {
+                                if place1 not in polygon_overlaps:
+                                    polygon_overlaps[place1] = {
                                         "geometry": geom1,
                                         "total_overlap_area": areas.overlap_area,
-                                        "overlapping_with": {idx2},
+                                        "overlapping_with": {place2},
                                         "original_area": areas.geom1_area,
                                     }
                                 else:
-                                    polygon_overlaps[idx1][
+                                    polygon_overlaps[place1][
                                         "total_overlap_area"
                                     ] += areas.overlap_area
-                                    polygon_overlaps[idx1][
+                                    polygon_overlaps[place1][
                                         "overlapping_with"
-                                    ].add(idx2)
+                                    ].add(place2)
 
-                                if idx2 not in polygon_overlaps:
-                                    polygon_overlaps[idx2] = {
+                                if place2 not in polygon_overlaps:
+                                    polygon_overlaps[place2] = {
                                         "geometry": geom2,
                                         "total_overlap_area": areas.overlap_area,
-                                        "overlapping_with": {idx1},
+                                        "overlapping_with": {place1},
                                         "original_area": areas.geom2_area,
                                     }
                                 else:
-                                    polygon_overlaps[idx2][
+                                    polygon_overlaps[place2][
                                         "total_overlap_area"
                                     ] += areas.overlap_area
-                                    polygon_overlaps[idx2][
+                                    polygon_overlaps[place2][
                                         "overlapping_with"
-                                    ].add(idx1)
+                                    ].add(place1)
 
                             except Exception as e:
                                 invalid_count += 1
@@ -192,7 +201,7 @@ class TopologyChecker:
 
                 except Exception as e:
                     invalid_count += 1
-                    logger.debug(f"Error processing feature {idx1}: {e}")
+                    logger.debug(f"Error processing feature {place1}: {e}")
 
             if len(self._transformed_geoms) > 10000:
                 self._transformed_geoms.clear()
@@ -205,9 +214,9 @@ class TopologyChecker:
 
         results = [
             {
-                "major_overlap": overlap_types[idx],
-                "minor_overlap": not overlap_types[idx],
-                "uid": idx,
+                "major_overlap": overlap_types[prod_place],
+                "minor_overlap": not overlap_types[prod_place],
+                "uid": prod_place,
                 "polygon": data["geometry"],
                 "overlap_percentage": (
                     data["total_overlap_area"] / data["original_area"]
@@ -216,12 +225,12 @@ class TopologyChecker:
                 "original_area_m2": data["original_area"],
                 "overlapping_with": sorted(list(data["overlapping_with"])),
                 "remarks": (
-                    f"{'Major' if overlap_types[idx] else 'Minor'} "
+                    f"{'Major' if overlap_types[prod_place] else 'Minor'} "
                     f"overlap ({(data['total_overlap_area'] / data['original_area']) * 100:.2f}%) "
                     f"with {len(data['overlapping_with'])} polygons"
                 ),
             }
-            for idx, data in polygon_overlaps.items()
+            for prod_place, data in polygon_overlaps.items()
             if data["original_area"] > 0
         ]
 
