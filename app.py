@@ -149,7 +149,7 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
         working_gdf = gdf.copy()
         
         # Ensure geometry column exists and is properly set
-        if 'geometry' not in working_gdf.columns and 'geometry' in working_gdf.columns:
+        if geometry' in working_gdf.columns:
             working_gdf['geometry'] = working_gdf['geometry'].apply(
                 lambda x: wkt.loads(x) if isinstance(x, str) else x
             )
@@ -189,7 +189,7 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
                 working_gdf.loc[mask2, 'geometry'] = new_poly2
 
         # Update polygon_corrected column
-        working_gdf['polygon_corrected'] = working_gdf['geometry'].apply(lambda x: x.wkt)
+        working_gdf['geometry'] = working_gdf['geometry'].apply(lambda x: x.wkt)
         
         return working_gdf
 
@@ -333,8 +333,8 @@ def main():
                                     ]
                                     
                                     # Make sure polygon_corrected column exists
-                                    if 'polygon_corrected' not in st.session_state.original_gdf.columns:
-                                        st.session_state.original_gdf['polygon_corrected'] = st.session_state.original_gdf['geometry'].apply(lambda x: x.wkt)
+                                    if 'geometry' not in st.session_state.original_gdf.columns:
+                                        st.session_state.original_gdf['geometry'] = st.session_state.original_gdf['geometry'].apply(lambda x: x.wkt)
                                     
                                     # Fix minor overlaps
                                     fixed_gdf = fix_minor_overlaps(st.session_state.original_gdf.copy(), minor_overlap_pairs)
