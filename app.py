@@ -64,10 +64,9 @@ def save_uploadedfile(uploadedfile):
 
 
 def create_overlap_map(gdf, errors_df):
-
     # Create base map
     m = folium.Map(location=[0, 0], zoom_start=10)
-
+    
     # Add original features with simpler style function
     folium.GeoJson(
         gdf,
@@ -79,11 +78,11 @@ def create_overlap_map(gdf, errors_df):
             'fillOpacity': 0.1
         }
     ).add_to(m)
-
+    
     # Create feature groups for different overlap types
     major_group = folium.FeatureGroup(name="Major Overlaps")
     minor_group = folium.FeatureGroup(name="Minor Overlaps")
-
+    
     # Add overlapping features
     for _, row in errors_df.iterrows():
         if row['major_overlap']:
@@ -92,9 +91,12 @@ def create_overlap_map(gdf, errors_df):
         else:
             color = 'yellow'
             feature_group = minor_group
-
+            
+        # Convert any timestamp in geometry to string before serialization
+        geom_json = json.loads(json.dumps(mapping(row['geometry']), default=str))
+        
         folium.GeoJson(
-            mapping(row['geometry']),  # Convert geometry to GeoJSON
+            geom_json,  # Use the serialized and deserialized geometry
             style_function=lambda x, c=color: {
                 'fillColor': c,
                 'color': c,
@@ -102,21 +104,21 @@ def create_overlap_map(gdf, errors_df):
                 'fillOpacity': 0.5
             }
         ).add_to(feature_group)
-
+    
     # Add feature groups to map
     major_group.add_to(m)
     minor_group.add_to(m)
-
+    
     # Add layer control
     folium.LayerControl().add_to(m)
-
+    
     # Fit bounds to show all features
     try:
         bounds = gdf.total_bounds
         m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     except Exception as e:
         st.warning(f"Could not fit map bounds: {str(e)}")
-
+        
     return m
 
 def ensure_polygon_new(geom):
