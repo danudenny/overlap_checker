@@ -142,13 +142,39 @@ def ensure_polygon_new(geom):
         logger.error(f"Error in ensure_polygon_new: {e}")
         return Polygon()
 
-def fix_minor_overlaps(gdf, overlap_pairs):
+def fix_minor_overlaps(gdf, minor_overlap_pairs):
+    """Fix minor overlaps in the GeoDataFrame"""
     try:
-        gdf["geometry"] = gdf["geometry"].apply(wkt.loads)
+        # Create a copy to avoid modifying the original
+        working_gdf = gdf.copy()
+        
+        # Ensure geometry column exists and is properly set
+        if 'geometry' not in working_gdf.columns and 'polygon_corrected' in working_gdf.columns:
+            working_gdf['geometry'] = working_gdf['polygon_corrected'].apply(
+                lambda x: wkt.loads(x) if isinstance(x, str) else x
+            )
+        
+        # Set the geometry column
+        working_gdf = gpd.GeoDataFrame(working_gdf, geometry='geometry', crs="EPSG:4326")
 
-        for unique_id1, unique_id2, _ in overlap_pairs:
-            poly1 = gdf.loc[gdf["uid"] == unique_id1, "geometry"].values[0]
-            poly2 = gdf.loc[gdf["uid"] == unique_id2, "geometry"].values[0]
+        # Process each overlap pair
+        for unique_id1, unique_id2, _ in minor_overlap_pairs:
+            # Get the geometries
+            mask1 = working_gdf['unique_id'] == unique_id1
+            mask2 = working_gdf['unique_id'] == unique_id2
+            
+            if not any(mask1) or not any(mask2):
+                continue
+                
+            poly1 = working_gdf.loc[mask1, 'geometry'].iloc[0]
+            poly2 = working_gdf.loc[mask2, 'geometry'].iloc[0]
+
+            if not (isinstance(poly1, (Polygon, MultiPolygon)) and isinstance(poly2, (Polygon, MultiPolygon))):
+                continue
+
+            # Fix any invalid geometries
+            poly1 = poly1.buffer(0)
+            poly2 = poly2.buffer(0)
 
             intersection = poly1.intersection(poly2)
 
@@ -159,17 +185,16 @@ def fix_minor_overlaps(gdf, overlap_pairs):
                 new_poly1 = ensure_polygon_new(new_poly1)
                 new_poly2 = ensure_polygon_new(new_poly2)
 
-                gdf.loc[gdf["uid"] == unique_id1, "geometry"] = new_poly1
-                gdf.loc[gdf["uid"] == unique_id2, "geometry"] = new_poly2
+                working_gdf.loc[mask1, 'geometry'] = new_poly1
+                working_gdf.loc[mask2, 'geometry'] = new_poly2
 
-        gdf["polygon_corrected"] = gdf["geometry"].apply(
-            lambda geom: geom.wkt if geom else None
-        )
-        gdf.drop(columns=["geometry"], inplace=True)
-        return gdf
+        # Update polygon_corrected column
+        working_gdf['polygon_corrected'] = working_gdf['geometry'].apply(lambda x: x.wkt)
+        
+        return working_gdf
 
     except Exception as e:
-        logger.error(f"Error in fix_overlapping_geometries: {e}")
+        logger.error(f"Error in fix_minor_overlaps: {str(e)}")
         raise
         
 
