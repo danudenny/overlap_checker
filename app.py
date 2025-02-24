@@ -271,21 +271,25 @@ def main():
                 # Get all columns except geometry for selection
                 available_columns = [col for col in gdf.columns if col != 'geometry']
                 
-                # Display column selector
-                selected_column = st.selectbox(
-                    "Select unique identifier column from properties",
+                # Display column selector for multiple columns
+                selected_columns = st.multiselect(
+                    "Select columns to create unique identifier",
                     options=available_columns,
-                    help="Choose the column that contains unique identifiers for each feature"
+                    help="Choose one or more columns to create unique identifiers. Values will be concatenated if multiple columns are selected."
                 )
 
-                # Verify column uniqueness
-                if selected_column:
-                    if gdf[selected_column].is_unique:
-                        st.success(f"✅ Column '{selected_column}' contains unique values")
-                        st.session_state.selected_identifier = selected_column
+                # Create unique identifier from selected columns
+                if selected_columns:
+                    # Convert all selected columns to string and concatenate with underscore
+                    gdf['combined_uid'] = gdf[selected_columns].astype(str).agg('_'.join, axis=1)
+                    
+                    # Verify uniqueness of combined values
+                    if gdf['combined_uid'].is_unique:
+                        st.success(f"✅ Combined values from columns {', '.join(selected_columns)} create unique identifiers")
+                        st.session_state.selected_identifier = 'combined_uid'
                         st.session_state.original_gdf = gdf
                     else:
-                        st.error(f"❌ Column '{selected_column}' contains duplicate values. Please select a column with unique values.")
+                        st.error(f"❌ Combined values from selected columns contain duplicates. Please select different columns to create unique identifiers.")
                         st.stop()
 
             # Initialize checker
@@ -303,9 +307,8 @@ def main():
                         gdf.set_geometry("geometry")
                         gdf.set_crs("EPSG:4326")
                         
-                        # Use the selected identifier column instead of 'uid'
-                        gdf['uid'] = gdf[st.session_state.selected_identifier]
-                        st.session_state.overlap_errors = checker.check_overlaps(gdf)
+                        # Use the combined_uid as the identifier column
+                        st.session_state.overlap_errors = checker.check_overlaps(gdf, id_column='combined_uid')
 
                         errors_df = gpd.GeoDataFrame(
                             st.session_state.overlap_errors,
@@ -324,7 +327,98 @@ def main():
                         
                         st.session_state.errors_df = errors_df
 
-                    # [Rest of the code remains the same...]
+                    # Display results
+                    if st.session_state.errors_df is not None and not st.session_state.errors_df.empty:
+                        st.write("### Statistics")
+                        
+                        # Calculate statistics
+                        total_features = len(st.session_state.original_gdf)
+                        total_overlaps = len(st.session_state.errors_df)
+                        major_overlaps = len(st.session_state.errors_df[st.session_state.errors_df['major_overlap']])
+                        minor_overlaps = len(st.session_state.errors_df[st.session_state.errors_df['minor_overlap']])
+                        
+                        # Create three columns for statistics
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        # Display statistics in columns with custom styling
+                        with col1:
+                            st.metric(
+                                "Total Features",
+                                f"{total_features:,}",
+                                help="Total number of features in the dataset"
+                            )
+                        
+                        with col2:
+                            st.metric(
+                                "Total Overlaps",
+                                f"{total_overlaps:,}",
+                                delta=f"{(total_overlaps/total_features*100):.1f}%" if total_features > 0 else "0%",
+                                help="Total number of features with overlaps"
+                            )
+                        
+                        with col3:
+                            st.metric(
+                                "Major Overlaps",
+                                f"{major_overlaps:,}",
+                                delta=f"{(major_overlaps/total_features*100):.1f}%" if total_features > 0 else "0%",
+                                delta_color="inverse",
+                                help="Features with significant overlaps (>20% or connected to major overlaps)"
+                            )
+                        
+                        with col4:
+                            st.metric(
+                                "Minor Overlaps",
+                                f"{minor_overlaps:,}",
+                                delta=f"{(minor_overlaps/total_features*100):.1f}%" if total_features > 0 else "0%",
+                                delta_color="inverse",
+                                help="Features with minor overlaps"
+                            )
+
+                        st.write("### Overlap Results")
+                        
+                        # Convert the errors DataFrame to a regular pandas DataFrame for display
+                        display_df = st.session_state.errors_df.drop(columns=['geometry']).copy()
+                        
+                        # Format numeric columns
+                        display_df['overlap_percentage'] = display_df['overlap_percentage'].round(2)
+                        display_df['total_overlap_area_m2'] = display_df['total_overlap_area_m2'].round(2)
+                        display_df['original_area_m2'] = display_df['original_area_m2'].round(2)
+                        
+                        # Display the results table
+                        st.dataframe(display_df)
+                        
+                        # Create and display the map
+                        st.write("### Overlap Map")
+                        m = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
+                        folium_static(m)
+                        
+                        # Add download buttons for results
+                        if not st.session_state.errors_df.empty:
+                            col1, col2 = st.columns(2)
+                            
+                            # Convert to GeoJSON for download
+                            geojson_str = convert_to_geojson(st.session_state.errors_df)
+                            
+                            with col1:
+                                st.download_button(
+                                    "Download Results (GeoJSON)",
+                                    geojson_str,
+                                    "overlap_results.geojson",
+                                    "application/json",
+                                )
+                            
+                            # Convert to CSV for download (excluding geometry column)
+                            csv = display_df.to_csv(index=False)
+                            
+                            with col2:
+                                st.download_button(
+                                    "Download Results (CSV)",
+                                    csv,
+                                    "overlap_results.csv",
+                                    "text/csv",
+                                )
+                    else:
+                        st.info("No overlaps found in the data.")
 
             # Cleanup
             os.unlink(temp_file)

@@ -96,7 +96,8 @@ class TopologyChecker:
         return overlap_types
 
     def check_overlaps(
-        self, gdf1: gpd.GeoDataFrame, gdf2: Optional[gpd.GeoDataFrame] = None
+        self, gdf1: gpd.GeoDataFrame, gdf2: Optional[gpd.GeoDataFrame] = None, 
+        id_column: str = "ProductionPlace"
     ) -> List[dict]:
         # Ensure correct CRS
         if not isinstance(gdf1, gpd.GeoDataFrame):
@@ -105,20 +106,20 @@ class TopologyChecker:
             gdf1.set_geometry("geometry", inplace=True)
             gdf1 = gdf1.set_crs("EPSG:4326")
 
-        # Ensure ProductionPlace column exists
-        if "ProductionPlace" not in gdf1.columns:
-            raise ValueError("GeoDataFrame must contain a 'ProductionPlace' column")
+        # Ensure identifier column exists
+        if id_column not in gdf1.columns:
+            raise ValueError(f"GeoDataFrame must contain a '{id_column}' column")
 
         gdf1 = gdf1 if gdf1.crs == "EPSG:4326" else gdf1.to_crs("EPSG:4326")
         if gdf2 is not None:
-            if "ProductionPlace" not in gdf2.columns:
-                raise ValueError("Second GeoDataFrame must contain a 'ProductionPlace' column")
+            if id_column not in gdf2.columns:
+                raise ValueError(f"Second GeoDataFrame must contain a '{id_column}' column")
             gdf2 = gdf2 if gdf2.crs == "EPSG:4326" else gdf2.to_crs("EPSG:4326")
         else:
             gdf2, self_check = gdf1, True
 
         geometries = np.array(gdf2.geometry.values)
-        production_places = gdf2["ProductionPlace"].values
+        identifiers = gdf2[id_column].values
         polygon_overlaps: Dict[str, Dict] = {}
         invalid_count = 0
 
@@ -133,7 +134,7 @@ class TopologyChecker:
         for start_idx in range(0, len(gdf1), batch_size):
             end_idx = min(start_idx + batch_size, len(gdf1))
             batch_geoms = gdf1.geometry.values[start_idx:end_idx]
-            batch_places = gdf1["ProductionPlace"].values[start_idx:end_idx]
+            batch_places = gdf1[id_column].values[start_idx:end_idx]
 
             for idx1, (geom1, place1) in enumerate(zip(batch_geoms, batch_places), start=start_idx):
                 if not valid_geoms1[idx1]:
@@ -151,7 +152,7 @@ class TopologyChecker:
                             continue
 
                         geom2 = geometries[idx2]
-                        place2 = production_places[idx2]
+                        place2 = identifiers[idx2]
 
                         if geom1.intersects(geom2) and not geom1.touches(geom2):
                             try:
