@@ -149,8 +149,8 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
         working_gdf = gdf.copy()
         
         # Ensure geometry column exists and is properly set
-        if 'geometry' not in working_gdf.columns and 'polygon_corrected' in working_gdf.columns:
-            working_gdf['geometry'] = working_gdf['polygon_corrected'].apply(
+        if 'geometry' not in working_gdf.columns and 'geometry' in working_gdf.columns:
+            working_gdf['geometry'] = working_gdf['geometry'].apply(
                 lambda x: wkt.loads(x) if isinstance(x, str) else x
             )
         
@@ -160,8 +160,8 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
         # Process each overlap pair
         for unique_id1, unique_id2, _ in minor_overlap_pairs:
             # Get the geometries
-            mask1 = working_gdf['unique_id'] == unique_id1
-            mask2 = working_gdf['unique_id'] == unique_id2
+            mask1 = working_gdf['uid'] == unique_id1
+            mask2 = working_gdf['uid'] == unique_id2
             
             if not any(mask1) or not any(mask2):
                 continue
