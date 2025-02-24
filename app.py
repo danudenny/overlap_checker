@@ -178,13 +178,8 @@ def fix_minor_overlaps(gdf, overlap_pairs):
         
 
 def create_fixed_overlap_map(original_gdf, fixed_gdf):
-    """Create a Folium map comparing original and fixed features"""
-    # Get the center of all geometries
-    center_lat = original_gdf.geometry.centroid.y.mean()
-    center_lon = original_gdf.geometry.centroid.x.mean()
-
     # Create base map
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+    m = folium.Map(location=[0, 0], zoom_start=10)
 
     # Add original features
     folium.GeoJson(
