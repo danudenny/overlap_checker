@@ -6,7 +6,8 @@ from topology_checker import TopologyChecker
 import tempfile
 import os
 import numpy as np
-from shapely.geometry import mapping
+from shapely.geometry import mapping, Polygon, MultiPolygon, LineString, Point, GeometryCollection
+from shapely import wkt
 import folium
 from streamlit_folium import folium_static
 from loguru import logger
@@ -122,11 +123,113 @@ def create_overlap_map(gdf, errors_df):
 
     return m
 
+def ensure_polygon_new(geom):
+    try:
+        if isinstance(geom, Polygon):
+            return geom
+        elif isinstance(geom, MultiPolygon):
+            return max(geom.geoms, key=lambda p: p.area)
+        elif isinstance(geom, (LineString, Point)):
+            return geom.buffer(1e-8)
+        elif isinstance(geom, GeometryCollection):
+            polygons = [g for g in geom.geoms if isinstance(g, Polygon)]
+            if polygons:
+                return max(polygons, key=lambda p: p.area)
+            else:
+                largest_geom = max(
+                    geom.geoms, key=lambda g: g.area if hasattr(g, "area") else 0
+                )
+                return ensure_polygon_new(largest_geom)
+        else:
+            return Polygon(geom)
+    except Exception as e:
+        logger.error(f"Error in ensure_polygon_new: {e}")
+        return Polygon()
+
+def fix_minor_overlaps(gdf, overlap_pairs):
+    try:
+        gdf["geometry"] = gdf["polygon_corrected"].apply(wkt.loads)
+
+        for unique_id1, unique_id2, _ in overlap_pairs:
+            poly1 = gdf.loc[gdf["unique_id"] == unique_id1, "geometry"].values[0]
+            poly2 = gdf.loc[gdf["unique_id"] == unique_id2, "geometry"].values[0]
+
+            intersection = poly1.intersection(poly2)
+
+            if not intersection.is_empty:
+                new_poly1 = poly1.difference(poly2).buffer(-0.00001)
+                new_poly2 = poly2
+
+                new_poly1 = ensure_polygon_new(new_poly1)
+                new_poly2 = ensure_polygon_new(new_poly2)
+
+                gdf.loc[gdf["unique_id"] == unique_id1, "geometry"] = new_poly1
+                gdf.loc[gdf["unique_id"] == unique_id2, "geometry"] = new_poly2
+
+        gdf["polygon_corrected"] = gdf["geometry"].apply(
+            lambda geom: geom.wkt if geom else None
+        )
+        gdf.drop(columns=["geometry"], inplace=True)
+        return gdf
+
+    except Exception as e:
+        logger.error(f"Error in fix_overlapping_geometries: {e}")
+        raise
+        
+
+def create_fixed_overlap_map(original_gdf, fixed_gdf):
+    """Create a Folium map comparing original and fixed features"""
+    # Get the center of all geometries
+    center_lat = original_gdf.geometry.centroid.y.mean()
+    center_lon = original_gdf.geometry.centroid.x.mean()
+
+    # Create base map
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+
+    # Add original features
+    folium.GeoJson(
+        original_gdf,
+        name='Original Features',
+        style_function=lambda x: {
+            'fillColor': 'red',
+            'color': 'red',
+            'weight': 1,
+            'fillOpacity': 0.3
+        }
+    ).add_to(m)
+
+    # Add fixed features
+    folium.GeoJson(
+        fixed_gdf,
+        name='Fixed Features',
+        style_function=lambda x: {
+            'fillColor': 'green',
+            'color': 'green',
+            'weight': 1,
+            'fillOpacity': 0.3
+        }
+    ).add_to(m)
+
+    # Add layer control
+    folium.LayerControl().add_to(m)
+
+    # Fit bounds to show all features
+    try:
+        bounds = original_gdf.total_bounds
+        m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    except Exception as e:
+        st.warning(f"Could not fit map bounds: {str(e)}")
+
+    return m
+
 
 def main():
     st.title("Topology Overlap Checker")
 
     uploaded_file = st.file_uploader("Choose a GeoJSON file", type=['geojson'])
+
+    if 'fixed_gdf' not in st.session_state:
+        st.session_state.fixed_gdf = None
 
     if uploaded_file is not None:
         try:
@@ -168,7 +271,7 @@ def main():
                     st.success(f"Found {len(overlap_errors)} overlapping features")
 
                     # Display results in tabs
-                    tab1, tab2, tab3 = st.tabs(["Summary", "Map", "Download"])
+                    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Summary", "Original Map", "Fixed Map", "Compare Maps", "Download"])
 
                     with tab1:
                         # Summary statistics
@@ -183,6 +286,31 @@ def main():
                             st.metric("Major Overlaps (>20%)", major_overlaps)
                         with col3:
                             st.metric("Minor Overlaps (≤20%)", minor_overlaps)
+
+                        if minor_overlaps > 0:
+                            if st.button("Fix Minor Overlaps"):
+                                try:
+                                    # Prepare overlap pairs for minor overlaps
+                                    minor_overlap_pairs = [
+                                        (e['uid'], e['overlapping_with'], e['overlap_percentage'])
+                                        for e in overlap_errors
+                                        if not e['major_overlap']
+                                    ]
+                                    
+                                    # Make sure polygon_corrected column exists
+                                    if 'polygon_corrected' not in gdf.columns:
+                                        gdf['polygon_corrected'] = gdf['geometry'].apply(lambda x: x.wkt)
+                                    
+                                    # Fix minor overlaps
+                                    fixed_gdf = fix_minor_overlaps(gdf, minor_overlap_pairs)
+                                    st.session_state.fixed_gdf = fixed_gdf
+                                    
+                                    st.success("Minor overlaps have been fixed! Check the Fixed Map tab to view the results.")
+                                    
+                                except Exception as e:
+                                    st.error(f"Error fixing overlaps: {str(e)}")
+                                    logger.error(f"Error in fix_minor_overlaps: {e}")
+                                    
 
                         # Display detailed table
                         st.subheader("Detailed Results")
@@ -208,36 +336,67 @@ def main():
                         folium_static(overlap_map)
 
                     with tab3:
+                        # Fixed Map visualization
+                        st.subheader("Fixed Features")
+                        if st.session_state.fixed_gdf is not None:
+                            fixed_map = create_fixed_overlap_map(gdf, st.session_state.fixed_gdf)
+                            folium_static(fixed_map)
+                        else:
+                            st.info("No fixed features available yet. Use the 'Fix Minor Overlaps' button in the Summary tab to generate fixed features.")
+
+                    with tab4:
+                        # Side by side comparison
+                        st.subheader("Compare Original vs Fixed Features")
+                        if st.session_state.fixed_gdf is not None:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write("Original Features")
+                                overlap_map = create_overlap_map(gdf, errors_df)
+                                folium_static(overlap_map)
+                            with col2:
+                                st.write("Fixed Features")
+                                fixed_map = create_fixed_overlap_map(gdf, st.session_state.fixed_gdf)
+                                folium_static(fixed_map)
+                        else:
+                            st.info("No fixed features available yet. Use the 'Fix Minor Overlaps' button in the Summary tab to generate fixed features.")
+
+                    with tab5:
                         # Download options
                         st.subheader("Download Results")
-                        col1, col2 = st.columns(2)
+                        col1, col2, col3 = st.columns(3)
 
                         with col1:
-                            # CSV download
+                            # Original errors CSV download
                             if not errors_df.empty:
                                 csv_df = errors_df.copy()
                                 csv_df = csv_df.drop(columns=['geometry'])
-
-                                numeric_cols = ['overlap_percentage', 'total_overlap_area_m2', 'original_area_m2']
-                                for col in numeric_cols:
-                                    csv_df[col] = csv_df[col].astype(float)
-
                                 csv = csv_df.to_csv(index=False)
                                 st.download_button(
-                                    label="Download CSV",
+                                    label="Download Original Errors CSV",
                                     data=csv,
                                     file_name="overlap_errors.csv",
                                     mime="text/csv"
                                 )
 
                         with col2:
-                            # GeoJSON download
+                            # Original errors GeoJSON download
                             if not errors_df.empty:
                                 geojson_str = convert_to_geojson(errors_df)
                                 st.download_button(
-                                    label="Download GeoJSON",
+                                    label="Download Original Errors GeoJSON",
                                     data=geojson_str,
                                     file_name="overlap_errors.geojson",
+                                    mime="application/json"
+                                )
+
+                        with col3:
+                            # Fixed features GeoJSON download
+                            if st.session_state.fixed_gdf is not None:
+                                fixed_geojson = convert_to_geojson(st.session_state.fixed_gdf)
+                                st.download_button(
+                                    label="Download Fixed Features GeoJSON",
+                                    data=fixed_geojson,
+                                    file_name="fixed_geometries.geojson",
                                     mime="application/json"
                                 )
 
