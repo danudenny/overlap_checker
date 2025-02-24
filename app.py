@@ -149,7 +149,7 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
         working_gdf = gdf.copy()
         
         # Ensure geometry column exists and is properly set
-        if geometry' in working_gdf.columns:
+        if 'geometry' in working_gdf.columns:
             working_gdf['geometry'] = working_gdf['geometry'].apply(
                 lambda x: wkt.loads(x) if isinstance(x, str) else x
             )
