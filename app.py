@@ -148,11 +148,11 @@ def ensure_polygon_new(geom):
 
 def fix_minor_overlaps(gdf, overlap_pairs):
     try:
-        gdf["geometry"] = gdf["polygon_corrected"].apply(wkt.loads)
+        gdf["geometry"] = gdf["geometry"].apply(wkt.loads)
 
         for unique_id1, unique_id2, _ in overlap_pairs:
-            poly1 = gdf.loc[gdf["unique_id"] == unique_id1, "geometry"].values[0]
-            poly2 = gdf.loc[gdf["unique_id"] == unique_id2, "geometry"].values[0]
+            poly1 = gdf.loc[gdf["uid"] == unique_id1, "geometry"].values[0]
+            poly2 = gdf.loc[gdf["uid"] == unique_id2, "geometry"].values[0]
 
             intersection = poly1.intersection(poly2)
 
@@ -163,8 +163,8 @@ def fix_minor_overlaps(gdf, overlap_pairs):
                 new_poly1 = ensure_polygon_new(new_poly1)
                 new_poly2 = ensure_polygon_new(new_poly2)
 
-                gdf.loc[gdf["unique_id"] == unique_id1, "geometry"] = new_poly1
-                gdf.loc[gdf["unique_id"] == unique_id2, "geometry"] = new_poly2
+                gdf.loc[gdf["uid"] == unique_id1, "geometry"] = new_poly1
+                gdf.loc[gdf["uid"] == unique_id2, "geometry"] = new_poly2
 
         gdf["polygon_corrected"] = gdf["geometry"].apply(
             lambda geom: geom.wkt if geom else None
