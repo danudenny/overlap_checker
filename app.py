@@ -226,10 +226,19 @@ def create_fixed_overlap_map(original_gdf, fixed_gdf):
 def main():
     st.title("Topology Overlap Checker")
 
-    uploaded_file = st.file_uploader("Choose a GeoJSON file", type=['geojson'])
-
+    # Initialize session state variables
     if 'fixed_gdf' not in st.session_state:
         st.session_state.fixed_gdf = None
+    if 'original_gdf' not in st.session_state:
+        st.session_state.original_gdf = None
+    if 'overlap_errors' not in st.session_state:
+        st.session_state.overlap_errors = None
+    if 'errors_df' not in st.session_state:
+        st.session_state.errors_df = None
+    if 'check_clicked' not in st.session_state:
+        st.session_state.check_clicked = False
+
+    uploaded_file = st.file_uploader("Choose a GeoJSON file", type=['geojson'])
 
     if uploaded_file is not None:
         try:
@@ -240,69 +249,79 @@ def main():
             with st.spinner('Loading data...'):
                 gdf = gpd.read_file(temp_file)
                 st.success(f"Loaded {len(gdf)} features")
+                st.session_state.original_gdf = gdf
 
             # Initialize checker
             checker = TopologyChecker()
 
             # Process button
-            if st.button("Check Overlaps"):
-                with st.spinner('Processing overlaps...'):
-                    logger.info(gdf.columns)
-                    gdf.set_geometry("geometry")
-                    gdf.set_crs("EPSG:4326")
-                    overlap_errors = checker.check_overlaps(gdf)
+            check_button = st.button("Check Overlaps")
+            if check_button:
+                st.session_state.check_clicked = True
 
-                    errors_df = gpd.GeoDataFrame(
-                        overlap_errors,
-                    )
-                    
-                    # Explicitly set the geometry column
-                    errors_df.set_geometry("polygon", inplace=True)
-                    
-                    # Set the CRS (assuming EPSG:4326 for latitude/longitude)
-                    errors_df.set_crs("EPSG:4326", inplace=True)
-                    if 'polygon' in errors_df.columns:
-                        errors_df.rename(columns={"polygon": "geometry"}, inplace=True)
-                    
-                    if 'geometry' in errors_df.columns:
-                        errors_df.set_geometry("geometry", inplace=True)
+            if st.session_state.check_clicked:
+                with st.spinner('Processing overlaps...'):
+                    if st.session_state.overlap_errors is None:
+                        logger.info(gdf.columns)
+                        gdf.set_geometry("geometry")
+                        gdf.set_crs("EPSG:4326")
+                        st.session_state.overlap_errors = checker.check_overlaps(gdf)
+
+                        errors_df = gpd.GeoDataFrame(
+                            st.session_state.overlap_errors,
+                        )
+                        
+                        # Explicitly set the geometry column
+                        errors_df.set_geometry("polygon", inplace=True)
+                        
+                        # Set the CRS
+                        errors_df.set_crs("EPSG:4326", inplace=True)
+                        if 'polygon' in errors_df.columns:
+                            errors_df.rename(columns={"polygon": "geometry"}, inplace=True)
+                        
+                        if 'geometry' in errors_df.columns:
+                            errors_df.set_geometry("geometry", inplace=True)
+                        
+                        st.session_state.errors_df = errors_df
 
                     # Display summary
-                    st.success(f"Found {len(overlap_errors)} overlapping features")
+                    st.success(f"Found {len(st.session_state.overlap_errors)} overlapping features")
 
                     # Display results in tabs
                     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Summary", "Original Map", "Fixed Map", "Compare Maps", "Download"])
 
                     with tab1:
                         # Summary statistics
-                        major_overlaps = len([e for e in overlap_errors if e['major_overlap']])
-                        minor_overlaps = len([e for e in overlap_errors if not e['major_overlap']])
+                        major_overlaps = len([e for e in st.session_state.overlap_errors if e['major_overlap']])
+                        minor_overlaps = len([e for e in st.session_state.overlap_errors if not e['major_overlap']])
 
                         # Create 3 columns for metrics
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("Total Features", len(gdf))
+                            st.metric("Total Features", len(st.session_state.original_gdf))
                         with col2:
                             st.metric("Major Overlaps (>20%)", major_overlaps)
                         with col3:
                             st.metric("Minor Overlaps (≤20%)", minor_overlaps)
 
+                        # Add Fix Minor Overlaps button
                         if minor_overlaps > 0:
-                            if st.button("Fix Minor Overlaps"):
+                            fix_button = st.button("Fix Minor Overlaps")
+                            if fix_button:
                                 try:
                                     # Prepare overlap pairs for minor overlaps
                                     minor_overlap_pairs = [
                                         (e['uid'], e['overlapping_with'], e['overlap_percentage'])
-                                        for e in overlap_errors
+                                        for e in st.session_state.overlap_errors
                                         if not e['major_overlap']
                                     ]
                                     
                                     # Make sure polygon_corrected column exists
-                                    if 'polygon_corrected' not in gdf.columns:
-                                        gdf['polygon_corrected'] = gdf['geometry'].apply(lambda x: x.wkt)
+                                    if 'polygon_corrected' not in st.session_state.original_gdf.columns:
+                                        st.session_state.original_gdf['polygon_corrected'] = st.session_state.original_gdf['geometry'].apply(lambda x: x.wkt)
                                     
                                     # Fix minor overlaps
-                                    fixed_gdf = fix_minor_overlaps(gdf, minor_overlap_pairs)
+                                    fixed_gdf = fix_minor_overlaps(st.session_state.original_gdf.copy(), minor_overlap_pairs)
                                     st.session_state.fixed_gdf = fixed_gdf
                                     
                                     st.success("Minor overlaps have been fixed! Check the Fixed Map tab to view the results.")
@@ -310,17 +329,16 @@ def main():
                                 except Exception as e:
                                     st.error(f"Error fixing overlaps: {str(e)}")
                                     logger.error(f"Error in fix_minor_overlaps: {e}")
-                                    
 
                         # Display detailed table
                         st.subheader("Detailed Results")
-                        if not errors_df.empty:
+                        if not st.session_state.errors_df.empty:
                             display_cols = [
                                 'major_overlap', 'minor_overlap', 'uid', 'overlap_percentage',
                                 'total_overlap_area_m2', 'original_area_m2',
                                 'overlapping_with', 'remarks'
                             ]
-                            display_df = errors_df[display_cols].copy()
+                            display_df = st.session_state.errors_df[display_cols].copy()
 
                             # Convert numeric columns to float for display
                             numeric_cols = ['overlap_percentage', 'total_overlap_area_m2', 'original_area_m2']
@@ -330,16 +348,16 @@ def main():
                             st.dataframe(display_df)
 
                     with tab2:
-                        # Map visualization
-                        st.subheader("Overlap Map")
-                        overlap_map = create_overlap_map(gdf, errors_df)
+                        # Original Map visualization
+                        st.subheader("Original Features with Overlaps")
+                        overlap_map = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
                         folium_static(overlap_map)
 
                     with tab3:
                         # Fixed Map visualization
                         st.subheader("Fixed Features")
                         if st.session_state.fixed_gdf is not None:
-                            fixed_map = create_fixed_overlap_map(gdf, st.session_state.fixed_gdf)
+                            fixed_map = create_fixed_overlap_map(st.session_state.original_gdf, st.session_state.fixed_gdf)
                             folium_static(fixed_map)
                         else:
                             st.info("No fixed features available yet. Use the 'Fix Minor Overlaps' button in the Summary tab to generate fixed features.")
@@ -351,11 +369,11 @@ def main():
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.write("Original Features")
-                                overlap_map = create_overlap_map(gdf, errors_df)
+                                overlap_map = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
                                 folium_static(overlap_map)
                             with col2:
                                 st.write("Fixed Features")
-                                fixed_map = create_fixed_overlap_map(gdf, st.session_state.fixed_gdf)
+                                fixed_map = create_fixed_overlap_map(st.session_state.original_gdf, st.session_state.fixed_gdf)
                                 folium_static(fixed_map)
                         else:
                             st.info("No fixed features available yet. Use the 'Fix Minor Overlaps' button in the Summary tab to generate fixed features.")
@@ -367,8 +385,8 @@ def main():
 
                         with col1:
                             # Original errors CSV download
-                            if not errors_df.empty:
-                                csv_df = errors_df.copy()
+                            if not st.session_state.errors_df.empty:
+                                csv_df = st.session_state.errors_df.copy()
                                 csv_df = csv_df.drop(columns=['geometry'])
                                 csv = csv_df.to_csv(index=False)
                                 st.download_button(
@@ -380,8 +398,8 @@ def main():
 
                         with col2:
                             # Original errors GeoJSON download
-                            if not errors_df.empty:
-                                geojson_str = convert_to_geojson(errors_df)
+                            if not st.session_state.errors_df.empty:
+                                geojson_str = convert_to_geojson(st.session_state.errors_df)
                                 st.download_button(
                                     label="Download Original Errors GeoJSON",
                                     data=geojson_str,
@@ -406,7 +424,6 @@ def main():
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
             st.exception(e)
-
 
 if __name__ == "__main__":
     main()
