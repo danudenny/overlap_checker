@@ -83,19 +83,15 @@ def create_overlap_map(gdf, errors_df):
     major_group = folium.FeatureGroup(name="Major Overlaps")
     minor_group = folium.FeatureGroup(name="Minor Overlaps")
     
-    # Ensure no Timestamp in the DataFrame
-    errors_df = errors_df.applymap(lambda x: str(x) if isinstance(x, pd.Timestamp) else x)
+    # Keep only geometry and major_overlap columns
+    errors_df = errors_df[['geometry', 'major_overlap']]
     
     # Add overlapping features
     for _, row in errors_df.iterrows():
-        if row['major_overlap']:
-            color = 'red'
-            feature_group = major_group
-        else:
-            color = 'yellow'
-            feature_group = minor_group
-            
-        # Convert geometry to JSON
+        color = 'red' if row['major_overlap'] else 'yellow'
+        feature_group = major_group if row['major_overlap'] else minor_group
+
+        # Ensure geometry is serializable
         geom_json = mapping(row['geometry'])
         
         folium.GeoJson(
