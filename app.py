@@ -64,13 +64,9 @@ def save_uploadedfile(uploadedfile):
 
 
 def create_overlap_map(gdf, errors_df):
-    """Create a Folium map with original and overlapping features"""
-    # Get the center of all geometries
-    center_lat = errors_df.geometry.centroid.y.mean()
-    center_lon = errors_df.geometry.centroid.x.mean()
 
     # Create base map
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+    m = folium.Map(location=[0, 0], zoom_start=10)
 
     # Add original features with simpler style function
     folium.GeoJson(
