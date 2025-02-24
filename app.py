@@ -83,8 +83,8 @@ def create_overlap_map(gdf, errors_df):
     major_group = folium.FeatureGroup(name="Major Overlaps")
     minor_group = folium.FeatureGroup(name="Minor Overlaps")
     
-    # Keep only geometry and major_overlap columns
-    errors_df = errors_df[['geometry', 'major_overlap']]
+    # Exclude date columns
+    errors_df = errors_df.select_dtypes(exclude=['datetime', 'datetimetz'])
     
     # Add overlapping features
     for _, row in errors_df.iterrows():
