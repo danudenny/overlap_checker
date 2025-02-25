@@ -389,9 +389,9 @@ def main():
                         st.dataframe(display_df)
                         
                         # Create and display the map
-                        st.write("### Overlap Map")
-                        m = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
-                        folium_static(m)
+                        # st.write("### Overlap Map")
+                        # m = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
+                        # folium_static(m)
                         
                         # Add download buttons for results
                         if not st.session_state.errors_df.empty:
