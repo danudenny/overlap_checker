@@ -320,7 +320,7 @@ def main():
                     if st.session_state.overlap_errors is None:
                         logger.info(gdf.columns)
                         gdf.set_geometry("geometry")
-                        gdf.set_crs("EPSG:4326")
+                        gdf.set_crs("EPSG:4326", inplace=True)  # Ensure CRS is set
 
                         # Use the combined_uid as the identifier column
                         st.session_state.overlap_errors = checker.check_overlaps(gdf, id_column='combined_uid')
