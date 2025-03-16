@@ -14,7 +14,6 @@ from loguru import logger
 
 st.set_page_config(page_title="Topology Overlap Checker", layout="wide")
 
-
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -24,7 +23,6 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
-
 
 def convert_to_geojson(gdf):
     """Convert GeoDataFrame to GeoJSON with proper type conversion"""
@@ -56,17 +54,15 @@ def convert_to_geojson(gdf):
 
     return json.dumps(feature_collection, cls=NumpyEncoder)
 
-
 def save_uploadedfile(uploadedfile):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.geojson') as tmp_file:
         tmp_file.write(uploadedfile.getvalue())
         return tmp_file.name
 
-
 def create_overlap_map(gdf, errors_df):
     # Create base map
     m = folium.Map(location=[0, 0], zoom_start=10)
-    
+
     # Add original features with simpler style function
     folium.GeoJson(
         gdf,
@@ -78,14 +74,14 @@ def create_overlap_map(gdf, errors_df):
             'fillOpacity': 0.1
         }
     ).add_to(m)
-    
+
     # Create feature groups for different overlap types
     major_group = folium.FeatureGroup(name="Major Overlaps")
     minor_group = folium.FeatureGroup(name="Minor Overlaps")
-    
+
     # Exclude date columns
     errors_df = errors_df.select_dtypes(exclude=['datetime', 'datetimetz'])
-    
+
     # Add overlapping features
     for _, row in errors_df.iterrows():
         color = 'red' if row['major_overlap'] else 'yellow'
@@ -93,7 +89,7 @@ def create_overlap_map(gdf, errors_df):
 
         # Ensure geometry is serializable
         geom_json = mapping(row['geometry'])
-        
+
         folium.GeoJson(
             geom_json,
             style_function=lambda x, c=color: {
@@ -103,21 +99,21 @@ def create_overlap_map(gdf, errors_df):
                 'fillOpacity': 0.5
             }
         ).add_to(feature_group)
-    
+
     # Add feature groups to map
     major_group.add_to(m)
     minor_group.add_to(m)
-    
+
     # Add layer control
     folium.LayerControl().add_to(m)
-    
+
     # Fit bounds to show all features
     try:
         bounds = gdf.total_bounds
         m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     except Exception as e:
         st.warning(f"Could not fit map bounds: {str(e)}")
-        
+
     return m
 
 def ensure_polygon_new(geom):
@@ -148,13 +144,13 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
     try:
         # Create a copy to avoid modifying the original
         working_gdf = gdf.copy()
-        
+
         # Ensure geometry column exists and is properly set
         if 'geometry' in working_gdf.columns:
             working_gdf['geometry'] = working_gdf['geometry'].apply(
                 lambda x: wkt.loads(x) if isinstance(x, str) else x
             )
-        
+
         # Set the geometry column
         working_gdf = gpd.GeoDataFrame(working_gdf, geometry='geometry', crs="EPSG:4326")
 
@@ -163,10 +159,10 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
             # Get the geometries
             mask1 = working_gdf['uid'] == unique_id1
             mask2 = working_gdf['uid'] == unique_id2
-            
+
             if not any(mask1) or not any(mask2):
                 continue
-                
+
             poly1 = working_gdf.loc[mask1, 'geometry'].iloc[0]
             poly2 = working_gdf.loc[mask2, 'geometry'].iloc[0]
 
@@ -191,13 +187,12 @@ def fix_minor_overlaps(gdf, minor_overlap_pairs):
 
         # Update polygon_corrected column
         working_gdf['geometry'] = working_gdf['geometry'].apply(lambda x: x.wkt)
-        
+
         return working_gdf
 
     except Exception as e:
         logger.error(f"Error in fix_minor_overlaps: {str(e)}")
         raise
-        
 
 def create_fixed_overlap_map(original_gdf, fixed_gdf):
     # Create base map
@@ -239,7 +234,6 @@ def create_fixed_overlap_map(original_gdf, fixed_gdf):
 
     return m
 
-
 def main():
     st.title("Topology Overlap Checker")
 
@@ -266,16 +260,24 @@ def main():
 
             # Load the data
             with st.spinner('Loading data...'):
-                if uploaded_file.type == 'application/vnd.ms-excel':
-                    df = pd.read_csv(temp_file)
-                    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude))
+                if uploaded_file.type == 'text/csv':
+                    # Add CSV configuration options
+                    separator = st.selectbox("Select CSV separator", options=[',', ';', '\t', '|'])
+                    df = pd.read_csv(temp_file, sep=separator)
+
+                    # Ensure the CSV has latitude and longitude columns
+                    if 'latitude' in df.columns and 'longitude' in df.columns:
+                        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude))
+                    else:
+                        st.error("CSV file must contain 'latitude' and 'longitude' columns.")
+                        st.stop()
                 else:
                     gdf = gpd.read_file(temp_file)
                 st.success(f"Loaded {len(gdf)} features")
-                
+
                 # Get all columns except geometry for selection
                 available_columns = [col for col in gdf.columns if col != 'geometry']
-                
+
                 # Display column selector for multiple columns
                 selected_columns = st.multiselect(
                     "Select columns to create unique identifier",
@@ -287,7 +289,7 @@ def main():
                 if selected_columns:
                     # Convert all selected columns to string and concatenate with underscore
                     gdf['combined_uid'] = gdf[selected_columns].astype(str).agg('_'.join, axis=1)
-                    
+
                     # Verify uniqueness of combined values
                     if gdf['combined_uid'].is_unique:
                         st.success(f"✅ Combined values from columns {', '.join(selected_columns)} create unique identifiers")
@@ -311,40 +313,40 @@ def main():
                         logger.info(gdf.columns)
                         gdf.set_geometry("geometry")
                         gdf.set_crs("EPSG:4326")
-                        
+
                         # Use the combined_uid as the identifier column
                         st.session_state.overlap_errors = checker.check_overlaps(gdf, id_column='combined_uid')
 
                         errors_df = gpd.GeoDataFrame(
                             st.session_state.overlap_errors,
                         )
-                        
+
                         # Explicitly set the geometry column
                         errors_df.set_geometry("polygon", inplace=True)
-                        
+
                         # Set the CRS
                         errors_df.set_crs("EPSG:4326", inplace=True)
                         if 'polygon' in errors_df.columns:
                             errors_df.rename(columns={"polygon": "geometry"}, inplace=True)
-                        
+
                         if 'geometry' in errors_df.columns:
                             errors_df.set_geometry("geometry", inplace=True)
-                        
+
                         st.session_state.errors_df = errors_df
 
                     # Display results
                     if st.session_state.errors_df is not None and not st.session_state.errors_df.empty:
                         st.write("### Statistics")
-                        
+
                         # Calculate statistics
                         total_features = len(st.session_state.original_gdf)
                         total_overlaps = len(st.session_state.errors_df)
                         major_overlaps = len(st.session_state.errors_df[st.session_state.errors_df['major_overlap']])
                         minor_overlaps = len(st.session_state.errors_df[st.session_state.errors_df['minor_overlap']])
-                        
+
                         # Create three columns for statistics
                         col1, col2, col3, col4 = st.columns(4)
-                        
+
                         # Display statistics in columns with custom styling
                         with col1:
                             st.metric(
@@ -352,7 +354,7 @@ def main():
                                 f"{total_features:,}",
                                 help="Total number of features in the dataset"
                             )
-                        
+
                         with col2:
                             st.metric(
                                 "Total Overlaps",
@@ -360,7 +362,7 @@ def main():
                                 delta=f"{(total_overlaps/total_features*100):.1f}%" if total_features > 0 else "0%",
                                 help="Total number of features with overlaps"
                             )
-                        
+
                         with col3:
                             st.metric(
                                 "Major Overlaps",
@@ -369,7 +371,7 @@ def main():
                                 delta_color="inverse",
                                 help="Features with significant overlaps (>20% or connected to major overlaps)"
                             )
-                        
+
                         with col4:
                             st.metric(
                                 "Minor Overlaps",
@@ -380,30 +382,30 @@ def main():
                             )
 
                         st.write("### Overlap Results")
-                        
+
                         # Convert the errors DataFrame to a regular pandas DataFrame for display
                         display_df = st.session_state.errors_df.drop(columns=['geometry']).copy()
-                        
+
                         # Format numeric columns
                         display_df['overlap_percentage'] = display_df['overlap_percentage'].round(2)
                         display_df['total_overlap_area_m2'] = display_df['total_overlap_area_m2'].round(2)
                         display_df['original_area_m2'] = display_df['original_area_m2'].round(2)
-                        
+
                         # Display the results table
                         st.dataframe(display_df)
-                        
+
                         # Create and display the map
                         # st.write("### Overlap Map")
                         # m = create_overlap_map(st.session_state.original_gdf, st.session_state.errors_df)
                         # folium_static(m)
-                        
+
                         # Add download buttons for results
                         if not st.session_state.errors_df.empty:
                             col1, col2 = st.columns(2)
-                            
+
                             # Convert to GeoJSON for download
                             geojson_str = convert_to_geojson(st.session_state.errors_df)
-                            
+
                             with col1:
                                 st.download_button(
                                     "Download Results (GeoJSON)",
@@ -411,10 +413,10 @@ def main():
                                     "overlap_results.geojson",
                                     "application/json",
                                 )
-                            
+
                             # Convert to CSV for download (excluding geometry column)
                             csv = display_df.to_csv(index=False)
-                            
+
                             with col2:
                                 st.download_button(
                                     "Download Results (CSV)",
