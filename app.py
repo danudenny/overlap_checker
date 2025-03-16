@@ -270,7 +270,12 @@ def main():
 
                     # Ensure the selected geometry column is used to create the GeoDataFrame
                     if geometry_column:
-                        gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df[geometry_column]))
+                        # Check for non-string values in the geometry column
+                        if df[geometry_column].apply(lambda x: isinstance(x, str)).all():
+                            gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df[geometry_column]))
+                        else:
+                            st.error("The selected geometry column contains non-string values. Please ensure all values are valid WKT strings.")
+                            st.stop()
                     else:
                         st.error("Please select a geometry column.")
                         st.stop()
