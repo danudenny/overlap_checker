@@ -257,7 +257,7 @@ def main():
     if 'selected_identifier' not in st.session_state:
         st.session_state.selected_identifier = None
 
-    uploaded_file = st.file_uploader("Choose a GeoJSON file", type=['geojson'])
+    uploaded_file = st.file_uploader("Choose a GeoJSON or CSV file", type=['geojson', 'csv'])
 
     if uploaded_file is not None:
         try:
@@ -266,7 +266,11 @@ def main():
 
             # Load the data
             with st.spinner('Loading data...'):
-                gdf = gpd.read_file(temp_file)
+                if uploaded_file.type == 'application/vnd.ms-excel':
+                    df = pd.read_csv(temp_file)
+                    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude))
+                else:
+                    gdf = gpd.read_file(temp_file)
                 st.success(f"Loaded {len(gdf)} features")
                 
                 # Get all columns except geometry for selection
