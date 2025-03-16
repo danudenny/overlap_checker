@@ -265,11 +265,14 @@ def main():
                     separator = st.selectbox("Select CSV separator", options=[',', ';', '\t', '|'])
                     df = pd.read_csv(temp_file, sep=separator)
 
-                    # Ensure the CSV has latitude and longitude columns
-                    if 'latitude' in df.columns and 'longitude' in df.columns:
-                        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude))
+                    # Select geometry column
+                    geometry_column = st.selectbox("Select geometry column", options=df.columns)
+
+                    # Ensure the selected geometry column is used to create the GeoDataFrame
+                    if geometry_column:
+                        gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df[geometry_column]))
                     else:
-                        st.error("CSV file must contain 'latitude' and 'longitude' columns.")
+                        st.error("Please select a geometry column.")
                         st.stop()
                 else:
                     gdf = gpd.read_file(temp_file)
